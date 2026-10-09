@@ -79,10 +79,10 @@ with `kubectl`/`helm` pointed at the cluster.
    kubectl apply -f bootstrap/root-app.yaml
    ```
 
-4. Confirm the Applications show up and sync — twelve of them: `root`,
+4. Confirm the Applications show up and sync — thirteen of them: `root`,
    `argocd`, `cilium`, `metallb`, `envoy-gateway`, `local-path-provisioner`,
    `prometheus`, `onepassword-connect`, `external-secrets-operator`,
-   `cert-manager`, `cloudflared`, `resume`:
+   `cert-manager`, `cloudflared`, `headlamp`, `resume`:
 
    ```sh
    kubectl get applications -n argocd
@@ -120,10 +120,14 @@ git: edit a manifest, commit, push, let ArgoCD sync.
   credentials are made by hand
   ([setup doc](docs/cloudflare-1password-setup.md), step 7).
 - **cert-manager** — real Let's Encrypt certificates via Cloudflare DNS-01 for
-  the LAN-only `resume.home.juangar.com` and `grafana.home.juangar.com`.
+  the LAN-only `resume.home.juangar.com`, `grafana.home.juangar.com` and
+  `headlamp.home.juangar.com`.
 - **cloudflared** — Cloudflare Tunnel publishing the resume site at
   **https://juangar.com**, with no open router ports
   ([how it works](docs/public-access-explained.md)).
+- **Headlamp** — cluster web UI at `https://headlamp.home.juangar.com`
+  (LAN-only). Its own ServiceAccount has no permissions; log in with a
+  token — see [Logging in to Headlamp](#logging-in-to-headlamp).
 - **`apps/resume`** — the resume site chart, and the reference chart for this
   repo. Heavily commented as a Helm tutorial; copy it for new apps.
 
@@ -141,7 +145,30 @@ path.
 
 The LAN names need an `/etc/hosts` entry (or a LAN DNS record) pointing at
 the Gateway's IP, `192.168.0.210` — one IP for every hostname, never a node's
-own IP. `grafana.lan` / `grafana.home.juangar.com` work the same way.
+own IP. `grafana.lan` / `grafana.home.juangar.com` and `headlamp.lan` /
+`headlamp.home.juangar.com` work the same way.
+
+### Logging in to Headlamp
+
+Headlamp asks for a token and acts with exactly that token's rights. Three
+ServiceAccounts in `platform/headlamp/`:
+
+| Token | Can | How to get it |
+| --- | --- | --- |
+| `headlamp-viewer` | read (built-in `view`: no Secrets) | long-lived — keep it in 1Password |
+| `headlamp-operator` | read + delete pods, rollout restart, scale | long-lived — keep it in 1Password |
+| `headlamp-admin` | cluster-admin | short-lived only, minted on demand |
+
+```sh
+# long-lived (swap viewer for operator)
+kubectl get secret headlamp-viewer-token -n headlamp -o jsonpath='{.data.token}' | base64 -d
+# admin, expires on its own
+kubectl create token headlamp-admin -n headlamp --duration=1h
+```
+
+Use the `https://` name: on `headlamp.lan` the token crosses the LAN in
+cleartext. To revoke a long-lived token, delete its Secret; ArgoCD recreates
+it with a new one.
 
 ### If the site doesn't come up on a fresh cluster
 

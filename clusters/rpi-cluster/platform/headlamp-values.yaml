@@ -1,0 +1,70 @@
+# Headlamp chart values (kubernetes-sigs/headlamp).
+#
+# Login model: token only. Headlamp always asks for a token at login and
+# proxies every request to the API server AS THAT TOKEN - its own
+# ServiceAccount is never used for users (that's `unsafeUseServiceAccountToken`,
+# left off). The tokens to log in with are the ServiceAccounts in
+# platform/headlamp/ - see the header of that folder's files.
+
+# The chart binds its own ServiceAccount to cluster-admin by default. Off:
+# nothing needs it, and it would put a cluster-admin credential inside a web
+# app reachable from the whole LAN - anyone who got code execution in this
+# pod would own the cluster without ever logging in. With no binding the
+# pod's token can do nothing.
+clusterRoleBinding:
+  create: false
+
+config:
+  # The chart renders an empty `oidc` Secret unless told not to. No OIDC here.
+  oidc:
+    secret:
+      create: false
+
+# Measured on this cluster before adding it (2026-10-09): worst node had a
+# 7-day low of ~550Mi available. Headlamp is a small Go backend serving a
+# static UI - expected ~30-50Mi idle, ~100Mi with a busy tab open. The limit
+# is deliberately generous: see the Grafana note in prometheus-values.yaml on
+# what a container sitting at its memory limit does to an SD card.
+resources:
+  requests:
+    cpu: 10m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+# The chart's securityContext replaces its defaults wholesale, so the
+# non-root bits are repeated here. readOnlyRootFilesystem makes the chart add
+# a writable /tmp emptyDir on its own.
+podSecurityContext:
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  runAsNonRoot: true
+  privileged: false
+  runAsUser: 100
+  runAsGroup: 101
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Same shared Gateway and listener pattern as Grafana (prometheus-values.yaml):
+# plain HTTP on headlamp.lan, a real certificate on the https-headlamp
+# listener for headlamp.home.juangar.com (platform/envoy-gateway/gateway.yaml,
+# platform/cert-manager/certificate-headlamp.yaml).
+#
+# Prefer the https name: the login token travels with every request, and on
+# headlamp.lan that's in cleartext on the LAN.
+httpRoute:
+  enabled: true
+  hostnames:
+    - headlamp.lan
+    - headlamp.home.juangar.com
+  parentRefs:
+    - name: eg
+      namespace: envoy-gateway-system
+      sectionName: http
+    - name: eg
+      namespace: envoy-gateway-system
+      sectionName: https-headlamp

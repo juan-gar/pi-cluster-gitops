@@ -217,14 +217,16 @@ If you paste the token on a shell that records history, clear it afterwards.
 
 ## 8. Local DNS for the internal hostnames
 
-`resume.home.juangar.com` and `grafana.home.juangar.com` get real Let's
-Encrypt certificates but stay LAN-only — they are deliberately **not** given
-public A records in Cloudflare. Map them locally instead:
+`resume.home.juangar.com`, `grafana.home.juangar.com` and
+`headlamp.home.juangar.com` get real Let's Encrypt certificates but stay
+LAN-only — they are deliberately **not** given public A records in
+Cloudflare. Map them locally instead:
 
 ```sh
 sudo tee -a /etc/hosts <<'EOF'
 192.168.0.210 resume.home.juangar.com
 192.168.0.210 grafana.home.juangar.com
+192.168.0.210 headlamp.home.juangar.com
 EOF
 ```
 

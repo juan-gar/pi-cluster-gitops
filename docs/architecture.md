@@ -70,6 +70,7 @@ instead of fighting a differently-configured install.
 | External Secrets Operator | `platform/external-secrets-operator.yaml` + `platform/external-secrets/` | turns `ExternalSecret`s into Secrets via the `onepassword` ClusterSecretStore |
 | cert-manager | `platform/cert-manager.yaml` + `platform/cert-manager/` | Let's Encrypt via Cloudflare DNS-01 for `*.home.juangar.com` |
 | cloudflared | `platform/cloudflared.yaml` → `platform/cloudflared/` | Cloudflare Tunnel connector publishing `juangar.com`; 2 replicas |
+| Headlamp | `platform/headlamp.yaml` + `platform/headlamp/` | cluster web UI, LAN-only; chart's cluster-admin binding off, users log in with the viewer/operator/admin tokens defined in `platform/headlamp/` |
 | resume site | `apps/resume.yaml` → `apps/resume/` | image built from `site/`; 2 replicas; queries Prometheus through a same-origin proxy |
 
 ### Envoy Gateway
@@ -96,7 +97,7 @@ point down for minutes. Measured failover behaviour is in
 [`networking-explained.md`](networking-explained.md#what-happens-when-a-pi-dies-measured).
 
 Listeners: `http` (port 80, any hostname) plus one HTTPS listener per
-LAN hostname (`https-resume`, `https-grafana`, port 443). Two rules keep
+LAN hostname (`https-resume`, `https-grafana`, `https-headlamp`, port 443). Two rules keep
 them working:
 
 - **One certificate per listener.** Gateway API only guarantees a single
@@ -109,7 +110,8 @@ them working:
   `envoy-gateway-system`, not in the apps' namespaces.
 
 `HTTPRoute` resources attach via `parentRefs` (`apps/resume/values.yaml`'s
-`route` block, `grafana.route.main` in `prometheus-values.yaml`). Both pin
+`route` block, `grafana.route.main` in `prometheus-values.yaml`, `httpRoute`
+in `headlamp-values.yaml`). All pin
 `sectionName`, so a route needs **one parentRef per listener** it should
 serve — a hostname with a valid certificate but no parentRef for its HTTPS
 listener gets a 404. `juangar.com` needs no HTTPS listener: Cloudflare

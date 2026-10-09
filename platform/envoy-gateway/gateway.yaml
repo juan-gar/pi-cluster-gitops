@@ -55,3 +55,15 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    - name: https-headlamp
+      protocol: HTTPS
+      port: 443
+      hostname: headlamp.home.juangar.com
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: headlamp-home-tls
+      allowedRoutes:
+        namespaces:
+          from: All

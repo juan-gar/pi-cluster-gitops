@@ -1,0 +1,38 @@
+# Headlamp: a web UI for the cluster, LAN-only at headlamp.lan /
+# headlamp.home.juangar.com through the shared Envoy Gateway.
+#
+# Three sources, same convention as cert-manager.yaml. The third
+# (platform/headlamp) carries the login ServiceAccounts and their RBAC - the
+# chart's own ServiceAccount is deliberately left with no permissions, see
+# headlamp-values.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: headlamp
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://kubernetes-sigs.github.io/headlamp/
+      chart: headlamp
+      targetRevision: 0.45.0
+      helm:
+        releaseName: headlamp
+        valueFiles:
+          - $values/clusters/rpi-cluster/platform/headlamp-values.yaml
+    - repoURL: https://github.com/juan-gar/pi-cluster-gitops.git
+      targetRevision: main
+      ref: values
+    - repoURL: https://github.com/juan-gar/pi-cluster-gitops.git
+      targetRevision: main
+      path: platform/headlamp
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: headlamp
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
