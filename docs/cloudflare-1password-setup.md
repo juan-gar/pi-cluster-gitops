@@ -113,6 +113,64 @@ It's pinned so routing doesn't depend on undocumented behaviour. If you ever
 route a **second** hostname through this same tunnel, that one needs its own
 route with its own Host header — do not reuse a hardcoded `juangar.com`.
 
+## 3b. Publish Kavita at `books.juangar.com`, behind Cloudflare Access
+
+The second hostname through the same tunnel. Unlike `juangar.com` it must
+**not** be open to the internet, so Cloudflare Access sits in front: nobody
+reaches Kavita, not even its login page, without first proving they own an
+allowed email address. Kavita's own login stays on behind it.
+
+Why `books.juangar.com` and not `books.home.juangar.com`: Cloudflare's free
+edge certificate covers `juangar.com` and `*.juangar.com`, one level deep
+only, so a public `books.home.juangar.com` would get a certificate error.
+That also keeps `*.home.juangar.com` meaning "LAN-only, no public record".
+
+**Prerequisite:** Kavita's admin account already exists (README,
+[Kavita: books](../README.md#kavita-books)). Kavita gives admin to whoever
+visits first.
+
+**Order matters: the Access application first, the route second.** Once the
+route is saved the hostname is live within seconds. Create Access first and
+it is never reachable without the login.
+
+1. Cloudflare dashboard → **Zero Trust**. On first use it asks for a team
+   name (any; it becomes `<team>.cloudflareaccess.com`) and a plan: choose
+   **Free**.
+2. **Access** → **Applications** → **Add an application** → **Self-hosted**.
+   - **Application name**: `Kavita`
+   - **Domain**: subdomain `books`, domain `juangar.com`
+   - **Session duration**: how often to log in again. The default (24h)
+     works; longer is more convenient on a phone.
+3. Add a **policy**: action **Allow**, include **Emails** → your own address.
+   Login method: **One-time PIN** (enabled by default; Cloudflare emails a
+   code). Save.
+4. Only now, the route: **Networking → Tunnels** → your tunnel → **Routes**
+   → **Add route** → **Published application**.
+   - **Subdomain**: `books`, **Domain**: `juangar.com`
+   - **Service URL**: the same Envoy Service URL as the `juangar.com` route
+     (step 3)
+   - **HTTP Host Header**: `books.juangar.com`. Not `juangar.com`: Envoy
+     would then send the request to the resume site.
+5. Check **DNS → Records** shows `books` as a proxied `CNAME` to
+   `<tunnel-ID>.cfargotunnel.com`, as in step 3.
+
+Check it from **outside** the LAN (phone on mobile data):
+`https://books.juangar.com` shows Cloudflare's "Get a login code" page
+first, and Kavita's login only after that. From a terminal,
+`curl -sI https://books.juangar.com` should be a `302` to
+`<team>.cloudflareaccess.com`; if it is a `200` from Kavita, Access is not
+covering the hostname, so delete the route until it is.
+
+Two consequences worth knowing:
+
+- **OPDS and mobile reader apps** can't complete the email-PIN login, so on
+  `books.juangar.com` they don't work. They work on the LAN names.
+- **On the LAN, Access is not in the path.** `books.juangar.com` is also in
+  the HTTPRoute (the tunnel delivers it to Envoy's `http` listener), so a
+  LAN device sending `Host: books.juangar.com` straight to `192.168.0.210`
+  gets Kavita's login without Access, the same as `books.home.juangar.com`.
+  That's fine on a trusted LAN. It's also why Kavita's own login stays on.
+
 ## 4. Create a Cloudflare API token for cert-manager
 
 Used only for DNS-01 challenges: cert-manager creates a `_acme-challenge` TXT
@@ -227,6 +285,7 @@ sudo tee -a /etc/hosts <<'EOF'
 192.168.0.210 resume.home.juangar.com
 192.168.0.210 grafana.home.juangar.com
 192.168.0.210 headlamp.home.juangar.com
+192.168.0.210 books.home.juangar.com
 EOF
 ```
 
@@ -241,8 +300,10 @@ every device on the network gets them rather than just this machine.
 | Thing | Lives in | Managed by |
 | --- | --- | --- |
 | `juangar.com` DNS | Cloudflare | dashboard (outside git) |
-| Tunnel + its route/Host header | Cloudflare | dashboard (outside git) |
-| Public TLS for `juangar.com` | Cloudflare edge | automatic, no cert-manager |
+| Tunnel + its routes/Host headers (`juangar.com`, `books.juangar.com`) | Cloudflare | dashboard (outside git) |
+| Access application + policy for `books.juangar.com` | Cloudflare Zero Trust | dashboard (outside git) |
+| Public TLS for `juangar.com`, `books.juangar.com` | Cloudflare edge | automatic, no cert-manager |
+| Kavita admin login | 1Password `K8S` vault | created by hand in Kavita on first run |
 | Tunnel token, CF API token | 1Password `K8S` vault | pulled in by ESO |
 | Connect credentials + access token | Kubernetes Secrets | **hand-created, never in git** |
 | Certs for `*.home.juangar.com` | cluster | cert-manager via DNS-01 |

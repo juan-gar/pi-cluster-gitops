@@ -1,0 +1,158 @@
+# Kavita chart values. Kavita-specific reasoning lives here; for what each
+# Helm mechanism does, read the equivalent block in apps/resume/values.yaml.
+
+image:
+  # -- The official image (Kavita's docs point at both this Docker Hub name
+  # and ghcr.io/kareadita/kavita). Multi-arch: linux/arm64 is in the index.
+  repository: jvmilazz0/kavita
+  # -- Empty = .Chart.AppVersion. The digest below wins anyway.
+  tag: ""
+  # -- Index digest of jvmilazz0/kavita:0.9.1 (= v0.9.1.4, built 2026-09-02;
+  # same digest as :latest when added on 2026-10-18). Bump tag and digest
+  # together, deliberately - Kavita runs DB migrations on startup, and the
+  # previous version's DB copy goes to config/temp, not off-node.
+  digest: "sha256:31181a32f0dda73cae68721867028a7253d57881b58bea5754cd9e578e75421a"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  # -- Kavita never talks to the Kubernetes API.
+  automountServiceAccountToken: false
+
+service:
+  type: ClusterIP
+  port: 80
+
+# -- Kavita's own listen port (appsettings.json "Port"; the image's EXPOSE).
+# Already above 1024, so it binds fine as non-root.
+containerPort: 5000
+
+route:
+  enabled: true
+  # https-books is the LAN certificate's listener (platform/envoy-gateway/
+  # gateway.yaml). books.juangar.com has no listener of its own: Cloudflare
+  # terminates its TLS and the tunnel delivers it to the `http` listener,
+  # exactly like juangar.com.
+  parentRefs:
+    - name: eg
+      namespace: envoy-gateway-system
+      sectionName: http
+    - name: eg
+      namespace: envoy-gateway-system
+      sectionName: https-books
+  hostnames:
+    - books.lan
+    # LAN-only, real certificate, no public DNS record - same pattern as
+    # headlamp.home.juangar.com.
+    - books.home.juangar.com
+    # Public through the Cloudflare Tunnel, gated by a Cloudflare Access
+    # policy that is configured in Cloudflare's dashboard, NOT here (see
+    # docs/cloudflare-1password-setup.md, step 3b). Anything that reaches
+    # the tunnel route with this Host and no Access session is turned away
+    # by Cloudflare before it gets to the cluster.
+    - books.juangar.com
+  # -- Gateway API request timeout. With none set, Envoy Gateway (1.9.1,
+  # internal/xds/translator/route.go) leaves Envoy's default 15s route
+  # timeout in place - fine for the resume site, but it cuts off a large
+  # PDF download on a slow connection and kills Kavita's SignalR websocket
+  # every 15s. "0s" disables the total-request timeout; Envoy's stream idle
+  # timeout still reaps connections that go silent.
+  timeouts:
+    request: 0s
+
+# Measured locally on 2026-10-18 (arm64, this image, same securityContext):
+# ~275Mi idle after first start, ~365Mi peak while scanning a two-book
+# library. Requests sized above idle so the scheduler only picks a Pi that
+# really has room; the worst node's 7-day low was ~550Mi available when
+# Headlamp was added (2026-10-09). The limit leaves headroom for scans and
+# cover generation on larger PDFs - .NET sizes its GC heap from the cgroup
+# limit, so a tight limit makes it collect harder rather than OOM straight
+# away. Re-check in Grafana after the first real library scan.
+resources:
+  requests:
+    cpu: 50m
+    memory: 384Mi
+  limits:
+    memory: 1Gi
+
+# -- Runs as the image's own `ubuntu` user (1000). The image sets no USER and
+# so defaults to root; nothing in its entrypoint needs root (the PUID/PGID
+# chown logic upstream once had is commented out), and Kavita only writes
+# under /kavita/config. Verified by running the image this way before
+# adding it.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  # No effect on local-path volumes (hostPath-backed: the kubelet does not
+  # chown them; the provisioner creates them 0777 instead). Kept so the chart
+  # still works on a StorageClass that honours it, e.g. Longhorn.
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- readOnlyRootFilesystem holds because every path Kavita writes (DB,
+# covers, cache, logs, temp, backups) is under /kavita/config. Expected and
+# harmless with it on: startup's attempt to rewrite wwwroot/index.html's
+# <base href> fails and is caught - it only matters for a non-"/" BaseUrl.
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# -- All three probe GET /api/health, the endpoint the image's own
+# HEALTHCHECK uses. startupProbe holds off the other two while the first
+# start (or a post-upgrade start) runs DB migrations: 30 x 10s = 5 minutes,
+# generous on purpose for a Pi on a microSD card.
+probes:
+  startup:
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
+  liveness:
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 3
+  readiness:
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# -- Kavita's scheduled tasks (library scan, nightly backup, cleanup) run on
+# this clock. The image defaults to UTC.
+timezone: Europe/Madrid
+
+persistence:
+  # Both volumes are ReadWriteOnce local-path: they bind to whichever Pi the
+  # pod first lands on (WaitForFirstConsumer), and the pod is pinned to that
+  # Pi from then on. If that node is down, Kavita is down - accepted for a
+  # single-user reader. They're also not replicated: back them up
+  # (docs/rebuild.md, step 1).
+  #
+  # Both are kept if the Application is deleted or renamed - see
+  # templates/pvc.yaml.
+  config:
+    # -- SQLite DB (accounts, reading progress), covers, cache, logs, and
+    # Kavita's own nightly backups. Those backups live on this same volume,
+    # so they protect against a bad migration, not against losing the node.
+    size: 2Gi
+    storageClassName: local-path
+  library:
+    # -- The books themselves, mounted at /books. Point Kavita's library at
+    # /books (or subfolders of it) in the UI.
+    size: 10Gi
+    storageClassName: local-path
+
+podAnnotations: {}
+podLabels: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

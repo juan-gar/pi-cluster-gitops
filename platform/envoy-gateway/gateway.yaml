@@ -67,3 +67,15 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    - name: https-books
+      protocol: HTTPS
+      port: 443
+      hostname: books.home.juangar.com
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: books-home-tls
+      allowedRoutes:
+        namespaces:
+          from: All

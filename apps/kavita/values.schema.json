@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "kavita chart values",
+  "description": "JSON Schema for values.yaml - same purpose as apps/resume/values.schema.json: a typo'd or malformed value fails at render time instead of deploying something subtly wrong.",
+  "type": "object",
+  "required": ["image", "service", "resources", "persistence"],
+  "properties": {
+    "image": {
+      "type": "object",
+      "required": ["repository"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": {
+          "type": "string",
+          "description": "Empty means fall back to .Chart.AppVersion."
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^(sha256:[a-f0-9]{64})?$"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"]
+        }
+      }
+    },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "type": "object" },
+        "automountServiceAccountToken": { "type": "boolean" }
+      }
+    },
+    "service": {
+      "type": "object",
+      "required": ["type", "port"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["ClusterIP", "NodePort", "LoadBalancer"]
+        },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "containerPort": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 65535,
+      "description": "Minimum 1024 because the pod runs as non-root."
+    },
+    "route": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "parentRefs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "namespace": { "type": "string" },
+              "sectionName": { "type": "string" }
+            }
+          }
+        },
+        "hostnames": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "timeouts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "request": { "type": "string", "pattern": "^([0-9]{1,5}(h|m|s|ms)){1,4}$" },
+            "backendRequest": { "type": "string", "pattern": "^([0-9]{1,5}(h|m|s|ms)){1,4}$" }
+          },
+          "description": "Gateway API HTTPRouteTimeouts; the pattern is the one the Gateway API CRD enforces, so a bad duration fails at render instead of at apply."
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "requests": { "type": "object" },
+        "limits": { "type": "object" }
+      }
+    },
+    "podSecurityContext": { "type": "object" },
+    "securityContext": { "type": "object" },
+    "probes": {
+      "type": "object",
+      "properties": {
+        "startup": { "type": "object" },
+        "liveness": { "type": "object" },
+        "readiness": { "type": "object" }
+      }
+    },
+    "timezone": { "type": "string", "minLength": 1 },
+    "persistence": {
+      "type": "object",
+      "required": ["config", "library"],
+      "additionalProperties": false,
+      "properties": {
+        "config": { "$ref": "#/definitions/volume" },
+        "library": { "$ref": "#/definitions/volume" }
+      }
+    },
+    "podAnnotations": { "type": "object" },
+    "podLabels": { "type": "object" },
+    "nodeSelector": { "type": "object" },
+    "tolerations": { "type": "array" },
+    "affinity": { "type": "object" }
+  },
+  "definitions": {
+    "volume": {
+      "type": "object",
+      "required": ["size", "storageClassName"],
+      "additionalProperties": false,
+      "properties": {
+        "size": {
+          "type": "string",
+          "pattern": "^[0-9]+(Mi|Gi|Ti)$",
+          "description": "A Kubernetes quantity in binary units, e.g. 10Gi."
+        },
+        "storageClassName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required and non-empty: this repo sets StorageClass explicitly everywhere rather than relying on a cluster default (see clusters/rpi-cluster/platform/local-path-provisioner-values.yaml)."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,24 @@
+# Kavita, the self-hosted ebook server and web reader. Upstream ships no Helm
+# chart, so this one follows apps/resume's structure - see that chart for the
+# Helm concepts; comments here only cover what is specific to Kavita.
+apiVersion: v2
+
+name: kavita
+description: Kavita ebook server and web reader (EPUB/PDF), LAN plus Cloudflare Access
+
+type: application
+
+# version = this chart; appVersion = the Kavita release (also the image tag).
+version: 0.1.0
+appVersion: "0.9.1"
+
+keywords:
+  - kavita
+  - ebooks
+  - reader
+
+maintainers:
+  - name: Juan García
+    url: https://github.com/juan-gar
+
+icon: https://raw.githubusercontent.com/Kareadita/Kavita/develop/UI/Web/src/assets/icons/android-chrome-192x192.png

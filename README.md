@@ -79,10 +79,10 @@ with `kubectl`/`helm` pointed at the cluster.
    kubectl apply -f bootstrap/root-app.yaml
    ```
 
-4. Confirm the Applications show up and sync — thirteen of them: `root`,
+4. Confirm the Applications show up and sync — fourteen of them: `root`,
    `argocd`, `cilium`, `metallb`, `envoy-gateway`, `local-path-provisioner`,
    `prometheus`, `onepassword-connect`, `external-secrets-operator`,
-   `cert-manager`, `cloudflared`, `headlamp`, `resume`:
+   `cert-manager`, `cloudflared`, `headlamp`, `kavita`, `resume`:
 
    ```sh
    kubectl get applications -n argocd
@@ -120,14 +120,19 @@ git: edit a manifest, commit, push, let ArgoCD sync.
   credentials are made by hand
   ([setup doc](docs/cloudflare-1password-setup.md), step 7).
 - **cert-manager** — real Let's Encrypt certificates via Cloudflare DNS-01 for
-  the LAN-only `resume.home.juangar.com`, `grafana.home.juangar.com` and
-  `headlamp.home.juangar.com`.
+  the LAN-only `resume.home.juangar.com`, `grafana.home.juangar.com`,
+  `headlamp.home.juangar.com` and `books.home.juangar.com`.
 - **cloudflared** — Cloudflare Tunnel publishing the resume site at
-  **https://juangar.com**, with no open router ports
+  **https://juangar.com**, and Kavita at `https://books.juangar.com` behind
+  Cloudflare Access, with no open router ports
   ([how it works](docs/public-access-explained.md)).
 - **Headlamp** — cluster web UI at `https://headlamp.home.juangar.com`
   (LAN-only). Its own ServiceAccount has no permissions; log in with a
   token — see [Logging in to Headlamp](#logging-in-to-headlamp).
+- **Kavita** (`apps/kavita`) — private ebook server and web reader at
+  `https://books.home.juangar.com` on the LAN, and `https://books.juangar.com`
+  from anywhere behind a Cloudflare Access login. One pod, state on two
+  `local-path` PVCs — see [Kavita: books](#kavita-books).
 - **`apps/resume`** — the resume site chart, and the reference chart for this
   repo. Heavily commented as a Helm tutorial; copy it for new apps.
 
@@ -145,8 +150,9 @@ path.
 
 The LAN names need an `/etc/hosts` entry (or a LAN DNS record) pointing at
 the Gateway's IP, `192.168.0.210` — one IP for every hostname, never a node's
-own IP. `grafana.lan` / `grafana.home.juangar.com` and `headlamp.lan` /
-`headlamp.home.juangar.com` work the same way.
+own IP. `grafana.lan` / `grafana.home.juangar.com`, `headlamp.lan` /
+`headlamp.home.juangar.com` and `books.lan` / `books.home.juangar.com` work
+the same way.
 
 ### Logging in to Headlamp
 
@@ -169,6 +175,40 @@ kubectl create token headlamp-admin -n headlamp --duration=1h
 Use the `https://` name: on `headlamp.lan` the token crosses the LAN in
 cleartext. To revoke a long-lived token, delete its Secret; ArgoCD recreates
 it with a new one.
+
+### Kavita: books
+
+**First run — do this on the LAN before `books.juangar.com` exists.**
+Kavita's *first visitor creates the admin account*, so open
+`https://books.home.juangar.com` straight after the first sync:
+
+1. Create the admin account; save it in 1Password (vault `K8S`).
+2. Server settings: turn off anonymous usage/stat collection.
+3. Add a library of type **Book**, folder `/books`, and leave **Enable
+   metadata** on — with it off, Kavita parses EPUBs by filename only and
+   skips them with "Unable to parse any meaningful information".
+
+Only then set up the public name
+([setup doc](docs/cloudflare-1password-setup.md), step 3b).
+
+**Adding books.** The library is a PVC mounted at `/books`; one folder per
+author works well. Copy files in, then **Scan library** in the UI:
+
+```sh
+POD=$(kubectl get pod -n kavita -l app.kubernetes.io/name=kavita -o name)
+kubectl exec -n kavita "$POD" -- mkdir -p "/books/Julián Casanova"
+kubectl cp "España partida en dos.epub" "kavita/${POD#pod/}:/books/Julián Casanova/"
+```
+
+PDFs open in a page viewer (zoom, no reflow); convert them to EPUB first for
+the font, spacing and theme controls.
+
+**Where the data is.** Two `local-path` PVCs, both on the Pi the pod first
+landed on: `kavita-config` (database: accounts, reading progress; covers;
+Kavita's own nightly backups) and `kavita-library` (the files). Neither is
+replicated, and Kavita's backups sit on the same volume — back both up
+before touching that node ([`docs/rebuild.md`](docs/rebuild.md), step 1).
+Deleting the `kavita` Application leaves both PVCs in place on purpose.
 
 ### If the site doesn't come up on a fresh cluster
 

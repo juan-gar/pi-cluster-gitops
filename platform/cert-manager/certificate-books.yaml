@@ -1,0 +1,18 @@
+# Certificate for books.home.juangar.com (Kavita) - LAN-only, same shape and
+# same reasoning as certificate-grafana.yaml: it lives in envoy-gateway-system
+# because the Gateway listener can only reference Secrets in its own namespace.
+#
+# Only the LAN name: books.juangar.com is served with Cloudflare's own
+# certificate and reaches Envoy as plain HTTP through the tunnel.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: books-home
+  namespace: envoy-gateway-system
+spec:
+  secretName: books-home-tls
+  dnsNames:
+    - books.home.juangar.com
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-prod

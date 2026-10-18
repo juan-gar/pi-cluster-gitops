@@ -1,0 +1,38 @@
+{{- /*
+The two volumes - the only things in this chart that can't be regenerated
+from git. Both annotations exist so that removing them from the cluster
+always takes a deliberate `kubectl delete pvc`:
+
+  - argocd.argoproj.io/sync-options: Delete=false - ArgoCD leaves the PVC in
+    place when the Application is deleted, or when a rename/refactor drops
+    it from the rendered output. local-path's reclaimPolicy is Delete, so
+    without this, either of those would delete the PV and the directory on
+    the node: library, accounts and reading progress gone.
+  - helm.sh/resource-policy: keep - the same guarantee for the local
+    `helm install`/`helm uninstall` loop (docs/helm-workflow.md). ArgoCD
+    ignores it, hence both.
+
+`range` over a list of dicts builds both from one block. "$" is used for the
+root context because "." is the loop item inside range.
+*/}}
+{{- range $claim := list
+      (dict "name" "config" "spec" $.Values.persistence.config)
+      (dict "name" "library" "spec" $.Values.persistence.library) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kavita.fullname" $ }}-{{ $claim.name }}
+  labels:
+    {{- include "kavita.componentLabels" (dict "ctx" $ "component" "server") | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ $claim.spec.storageClassName }}
+  resources:
+    requests:
+      storage: {{ $claim.spec.size }}
+{{- end }}

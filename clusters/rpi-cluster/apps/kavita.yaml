@@ -1,0 +1,29 @@
+# Kavita, the ebook server and web reader: https://books.home.juangar.com on
+# the LAN, https://books.juangar.com from anywhere behind Cloudflare Access.
+# Rendered with `helm template` like resume.yaml - see that file for what
+# that means for NOTES.txt, hooks and rollback.
+#
+# The two PVCs survive deleting this Application (apps/kavita/templates/
+# pvc.yaml); remove them by hand if you really mean to drop the library.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kavita
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/juan-gar/pi-cluster-gitops.git
+    targetRevision: main
+    path: apps/kavita
+    helm:
+      releaseName: kavita
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kavita
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

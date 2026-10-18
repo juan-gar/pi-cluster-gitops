@@ -72,6 +72,7 @@ instead of fighting a differently-configured install.
 | cloudflared | `platform/cloudflared.yaml` → `platform/cloudflared/` | Cloudflare Tunnel connector publishing `juangar.com`; 2 replicas |
 | Headlamp | `platform/headlamp.yaml` + `platform/headlamp/` | cluster web UI, LAN-only; chart's cluster-admin binding off, users log in with the viewer/operator/admin tokens defined in `platform/headlamp/` |
 | resume site | `apps/resume.yaml` → `apps/resume/` | image built from `site/`; 2 replicas; queries Prometheus through a same-origin proxy |
+| Kavita | `apps/kavita.yaml` → `apps/kavita/` | ebook server/reader; upstream image, own chart; 1 replica (`Recreate`, SQLite on RWO `local-path` PVCs kept on Application delete); public name behind Cloudflare Access |
 
 ### Envoy Gateway
 
@@ -97,7 +98,7 @@ point down for minutes. Measured failover behaviour is in
 [`networking-explained.md`](networking-explained.md#what-happens-when-a-pi-dies-measured).
 
 Listeners: `http` (port 80, any hostname) plus one HTTPS listener per
-LAN hostname (`https-resume`, `https-grafana`, `https-headlamp`, port 443). Two rules keep
+LAN hostname (`https-resume`, `https-grafana`, `https-headlamp`, `https-books`, port 443). Two rules keep
 them working:
 
 - **One certificate per listener.** Gateway API only guarantees a single
@@ -111,11 +112,19 @@ them working:
 
 `HTTPRoute` resources attach via `parentRefs` (`apps/resume/values.yaml`'s
 `route` block, `grafana.route.main` in `prometheus-values.yaml`, `httpRoute`
-in `headlamp-values.yaml`). All pin
+in `headlamp-values.yaml`, `route` in `apps/kavita/values.yaml`). All pin
 `sectionName`, so a route needs **one parentRef per listener** it should
 serve — a hostname with a valid certificate but no parentRef for its HTTPS
-listener gets a 404. `juangar.com` needs no HTTPS listener: Cloudflare
-terminates its TLS, and cloudflared delivers it to the `http` listener.
+listener gets a 404. `juangar.com` and `books.juangar.com` need no HTTPS
+listener: Cloudflare terminates their TLS, and cloudflared delivers them to
+the `http` listener.
+
+**Route timeout.** An HTTPRoute with no `timeouts` gets Envoy's default
+15s route timeout: Envoy Gateway sets none of its own. That's fine for
+short requests, but it cuts off long downloads and kills websockets every
+15s, so Kavita's route sets `timeouts.request: 0s` (disabled; Envoy's
+stream idle timeout still applies). Any app that streams or holds
+connections open needs the same.
 
 Both the Gateway API CRDs and Envoy Gateway's own CRDs ship bundled in the
 `gateway-helm` chart's `crds` subchart (`crds.enabled: true` by default) - do

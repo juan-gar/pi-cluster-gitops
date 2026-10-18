@@ -42,6 +42,29 @@ kubectl get pv -o custom-columns=\
 sudo tar czf ~/pv-<claim>.tgz -C /opt/local-path-provisioner <directory from PATH>
 ```
 
+**Kavita: back up both claims, `kavita-config` and `kavita-library`.**
+`kavita-library` holds the books. `kavita-config` holds the SQLite database,
+which is the only copy of accounts and reading progress. Kavita's built-in
+nightly backups are written inside `kavita-config` itself, so they don't
+survive losing the node.
+
+Don't try to stop the pod for a clean copy: `kubectl scale --replicas=0`
+doesn't stick, because the chart pins one replica and ArgoCD's selfHeal
+restores it within moments. Instead, take a consistent copy from inside
+Kavita first, then tar both directories as above:
+
+1. Kavita → **Server settings → Tasks → Backup** (run now). It writes a zip
+   of the database and its settings into `/kavita/config/backups/`.
+2. Tar `kavita-config` and `kavita-library` from the node as above. The
+   live `kavita.db` in that tar may be mid-write; the zip from step 1 is
+   the copy to trust.
+
+To restore onto the rebuilt cluster, let ArgoCD create the (empty) PVCs
+and start Kavita once, then untar both archives into their new directories
+on the new node. If Kavita complains about the database, replace
+`kavita.db` with the one from the step 1 zip. Then
+`kubectl rollout restart deploy/kavita -n kavita`.
+
 Also outside git, and not coming back on their own: the two 1Password
 bootstrap credentials (see the install guide's "Before you wipe"), and
 everything in Cloudflare's dashboard — DNS records and the tunnel's route

@@ -1,0 +1,114 @@
+{{- /*
+One Kavita pod. Unlike apps/resume there is no replica count, HPA, PDB or
+topology spread: Kavita keeps its state in SQLite on a ReadWriteOnce volume,
+so a second pod could neither mount it nor safely share the database.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kavita.fullname" . }}
+  labels:
+    {{- include "kavita.componentLabels" (dict "ctx" . "component" "server") | nindent 4 }}
+spec:
+  replicas: 1
+  {{- /*
+    Recreate, not the default RollingUpdate: a rolling update starts the new
+    pod BEFORE stopping the old one, and the new pod would sit in
+    ContainerCreating forever waiting for an RWO volume the old pod still
+    holds - or, on a StorageClass that allowed it, open the same SQLite file
+    from two processes. Recreate means a short gap on every upgrade instead.
+  */}}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "kavita.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "kavita.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "kavita.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: {{ include "kavita.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: TZ
+              value: {{ .Values.timezone | quote }}
+            {{- /*
+              Scratch space for .NET and libvips, which honour TMPDIR. NOT the
+              usual emptyDir over /tmp: the image's entrypoint copies its
+              default appsettings.json from /tmp/config/ on first start, and
+              an emptyDir there would hide it - the first start then fails
+              with "Copy failed, check folder permissions".
+            */}}
+            - name: TMPDIR
+              value: /scratch
+          ports:
+            - name: http
+              containerPort: {{ .Values.containerPort }}
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            {{- toYaml .Values.probes.startup | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            {{- /*
+              Both paths are fixed: /kavita/config is where the image's
+              entrypoint and Kavita itself look for their state; /books is
+              what the library is pointed at in Kavita's UI, so moving it
+              means editing the library there too.
+            */}}
+            - name: config
+              mountPath: /kavita/config
+            - name: library
+              mountPath: /books
+            - name: scratch
+              mountPath: /scratch
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: {{ include "kavita.fullname" . }}-config
+        - name: library
+          persistentVolumeClaim:
+            claimName: {{ include "kavita.fullname" . }}-library
+        - name: scratch
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
