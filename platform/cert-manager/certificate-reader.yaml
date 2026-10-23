@@ -1,0 +1,16 @@
+# Certificate for books.home.juangar.com (the book reader) - LAN-only, same
+# shape and same reasoning as certificate-grafana.yaml: it lives in
+# envoy-gateway-system because the Gateway listener can only reference
+# Secrets in its own namespace.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: reader-home
+  namespace: envoy-gateway-system
+spec:
+  secretName: reader-home-tls
+  dnsNames:
+    - books.home.juangar.com
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-prod

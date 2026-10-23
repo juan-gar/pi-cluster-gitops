@@ -1,0 +1,20 @@
+{{- /*
+The library itself: uploaded books and progress.json. Not recreated from git
+- nothing in git can recreate it - so ArgoCD must never prune it: removing
+the Application or renaming the chart would otherwise delete every book.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "reader.fullname" . }}-data
+  labels:
+    {{- include "reader.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.persistence.storageClassName }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}

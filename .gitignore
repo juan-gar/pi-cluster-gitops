@@ -12,3 +12,11 @@ secrets.yaml
 secrets/
 1password-credentials.json
 *.credentials.json
+
+# Book reader (reader/). The repo is public, so book text never goes in it:
+# converted books and the local dev data dir stay on your machine only.
+reader/books/
+reader/data/
+*.book.zip
+reader/web/node_modules/
+reader/web/dist/

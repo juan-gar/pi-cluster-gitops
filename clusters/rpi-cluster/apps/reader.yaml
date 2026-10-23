@@ -1,0 +1,28 @@
+# Private book reader, LAN-only at books.lan / books.home.juangar.com.
+# Rendered from apps/reader with `helm template`, like resume.yaml - see that
+# file for what that means in practice.
+#
+# The repo only holds the reader's code. The books themselves live on the
+# chart's PVC (annotated so ArgoCD never prunes it) and arrive by upload.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: reader
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/juan-gar/pi-cluster-gitops.git
+    targetRevision: main
+    path: apps/reader
+    helm:
+      releaseName: reader
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: reader
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,90 @@
+# Values for the book reader. Same two rules as apps/resume/values.yaml:
+# every key here is used by a template, and values.schema.json rejects
+# anything misspelled.
+#
+# What the pod holds: the reader's code (public, like this repo) and, on its
+# PVC, the books you uploaded through the UI plus progress.json. Book text
+# never comes from git.
+
+image:
+  # -- Built from reader/ by .github/workflows/build-reader.yml, which writes
+  # the digest below. Multi-arch (arm64 for the Pis).
+  repository: ghcr.io/juan-gar/book-reader
+  # -- Fallback when digest is empty: .Chart.AppVersion.
+  tag: ""
+  # -- Wins over tag. Written by CI on every build of reader/.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 80
+
+containerPort: 8080
+
+route:
+  enabled: true
+  # LAN-only: the shared Envoy Gateway's plain-HTTP listener and this app's
+  # own HTTPS listener (platform/envoy-gateway/gateway.yaml). Deliberately NOT
+  # listed in platform/cloudflared - nothing routes here from the internet.
+  parentRefs:
+    - name: eg
+      namespace: envoy-gateway-system
+      sectionName: http
+    - name: eg
+      namespace: envoy-gateway-system
+      sectionName: https-reader
+  hostnames:
+    - books.lan
+    - books.home.juangar.com
+
+persistence:
+  # -- local-path is not replicated: the volume lives on whichever node the
+  # pod first landed on, and the pod is pinned there from then on. If that
+  # node dies the books are unavailable until it's back - re-uploading the
+  # zips onto a fresh volume is the recovery (see README, "Book reader").
+  storageClassName: local-path
+  size: 1Gi
+
+# -- The login passphrase, from 1Password via External Secrets (vault K8S,
+# item `book-reader`, field `token` - same convention as grafana-admin).
+passphrase:
+  onePasswordItem: book-reader
+  onePasswordField: token
+
+# A Go binary serving static files and small JSON. Idle is ~10Mi; an upload
+# spools to disk, not memory, so the limit only needs headroom for unzip
+# buffers and JSON parsing of a large book.json.
+resources:
+  requests:
+    cpu: 10m
+    memory: 24Mi
+  limits:
+    memory: 128Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  # distroless "nonroot" user.
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
+podLabels: {}

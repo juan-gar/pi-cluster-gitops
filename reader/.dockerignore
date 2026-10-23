@@ -1,0 +1,8 @@
+# Book content must never reach the image (it is public) - see Dockerfile.
+books/
+data/
+**/*.book.zip
+**/book.json
+web/node_modules/
+web/dist/
+tools/
