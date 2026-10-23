@@ -13,7 +13,7 @@ image:
   # -- Fallback when digest is empty: .Chart.AppVersion.
   tag: ""
   # -- Wins over tag. Written by CI on every build of reader/.
-  digest: ""
+  digest: "sha256:db17c3ec4d03216ff5b07443db6823c87556943e852ffce75117beebf86d3123"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
