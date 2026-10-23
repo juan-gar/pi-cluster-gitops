@@ -130,6 +130,9 @@ git: edit a manifest, commit, push, let ArgoCD sync.
   token — see [Logging in to Headlamp](#logging-in-to-headlamp).
 - **`apps/resume`** — the resume site chart, and the reference chart for this
   repo. Heavily commented as a Helm tutorial; copy it for new apps.
+- **`apps/reader`** — a private book reader at `https://books.home.juangar.com`
+  (LAN-only, passphrase login). Code in `reader/`; the books themselves are
+  uploaded through its UI and never touch git — see [Book reader](#book-reader).
 
 The site reads live cluster state from Prometheus through a same-origin nginx
 proxy — see [`docs/architecture.md`](docs/architecture.md) for the request
@@ -145,8 +148,32 @@ path.
 
 The LAN names need an `/etc/hosts` entry (or a LAN DNS record) pointing at
 the Gateway's IP, `192.168.0.210` — one IP for every hostname, never a node's
-own IP. `grafana.lan` / `grafana.home.juangar.com` and `headlamp.lan` /
-`headlamp.home.juangar.com` work the same way.
+own IP. `grafana.lan` / `grafana.home.juangar.com`, `headlamp.lan` /
+`headlamp.home.juangar.com` and `books.lan` / `books.home.juangar.com` work
+the same way.
+
+### Book reader
+
+A reading app for books converted to its `book.json` format
+([`reader/FORMAT.md`](reader/FORMAT.md)): pick a book from the library, read
+it, and pick up on another device where you left off. **This repo and the
+`book-reader` image are public, so neither ever contains book text.** Books
+are uploaded as zips from the UI and stored on the app's PVC.
+
+- **Login.** One passphrase, from 1Password item `book-reader` (vault `K8S`,
+  field `token`), synced by an `ExternalSecret` in the chart.
+- **Adding a book.** Have Claude Code convert the source into `book.json` in
+  a folder outside this repo, following `reader/FORMAT.md`. Then run
+  `node reader/tools/pack.mjs <folder>` and upload the resulting
+  `reader/books/<id>.book.zip` (gitignored) with **+ Añadir libro**.
+- **Backups.** The PVC is `local-path`: one copy, on one node's SD card. Your
+  zips are the real source of truth — re-uploading them rebuilds the library.
+  Reading positions are only bookmarks (`/data/progress.json`). To look at
+  them, open `/api/progress` while logged in. The image is distroless, with
+  no shell, `cat` or `tar`, so `kubectl exec`/`kubectl cp` into it won't work.
+- **Local dev.** `cd reader && READER_PASSPHRASE=x READER_DATA_DIR=./data READER_STATIC_DIR=web/dist go run .`
+  after `npm run build` in `reader/web`, or `npm run dev` there for hot reload
+  against the Go server on `:8080`.
 
 ### Logging in to Headlamp
 

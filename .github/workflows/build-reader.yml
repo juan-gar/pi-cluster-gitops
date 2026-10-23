@@ -1,0 +1,115 @@
+# Builds reader/ into ghcr.io/<owner>/book-reader and writes the digest into
+# apps/reader/values.yaml - the same build-then-pin-by-digest loop as
+# build-site.yml, which explains each step in more detail.
+#
+# The image is public and holds code only; book text lives on the cluster's
+# PVC. reader/.dockerignore keeps any local books out of the build context.
+name: build-reader
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "reader/**"
+      - ".github/workflows/build-reader.yml"
+  pull_request:
+    paths:
+      - "reader/**"
+  workflow_dispatch:
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/book-reader
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: reader/go.mod
+      - name: go vet + test
+        working-directory: reader
+        run: |
+          go vet ./...
+          go test -race ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: reader/web/package-lock.json
+      - name: Build web UI
+        working-directory: reader/web
+        run: npm ci --no-audit --no-fund && npm run build
+
+  build:
+    needs: test
+    # Pull requests run the tests only; images come from main.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # No QEMU step: the Dockerfile cross-compiles Go for arm64 on the
+      # amd64 runner, and the final distroless stage needs no RUN.
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./reader
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=book-reader
+          cache-to: type=gha,mode=max,scope=book-reader
+
+      - name: Write digest into the chart values
+        run: |
+          set -euo pipefail
+          python3 - '${{ steps.build.outputs.digest }}' <<'PY'
+          import re, sys
+          digest = sys.argv[1]
+          path = "apps/reader/values.yaml"
+          src = open(path).read()
+          new, n = re.subn(
+              r'(^image:\n(?:[ \t]+.*\n)*?[ \t]+digest:[ \t]*)("[^"]*"|\S*)',
+              lambda m: m.group(1) + '"%s"' % digest,
+              src,
+              count=1,
+              flags=re.M,
+          )
+          if n != 1:
+              sys.exit("could not locate image.digest in %s" % path)
+          open(path, "w").write(new)
+          PY
+
+      - name: Commit if changed
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- apps/reader/values.yaml; then
+            echo "digest unchanged, nothing to commit"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/reader/values.yaml
+          git commit -m "chore: book-reader image ${{ github.sha }} [skip ci]"
+          # build-site.yml writes back to main too; if both ran at once,
+          # replay this one-line change on top of the other.
+          git pull --rebase origin main
+          git push

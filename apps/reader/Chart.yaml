@@ -1,0 +1,13 @@
+# Private, LAN-only book reader. Source in reader/; image built by
+# .github/workflows/build-reader.yml. See apps/resume/Chart.yaml for what
+# version vs appVersion mean - same rules here.
+apiVersion: v2
+name: reader
+description: Private LAN-only book reader (Go + React), books stored on a PVC
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+maintainers:
+  - name: Juan García
+    url: https://github.com/juan-gar
+icon: https://raw.githubusercontent.com/kubernetes/community/master/icons/png/resources/labeled/pod-128.png

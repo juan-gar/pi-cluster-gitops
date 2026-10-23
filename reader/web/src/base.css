@@ -1,0 +1,4 @@
+/* Paints the page before React mounts, so there is no white flash in dark mode. */
+html, body { margin: 0; background: #FBF8F2; }
+@media (prefers-color-scheme: dark) { html, body { background: #16140F; } }
+* { box-sizing: border-box; }
